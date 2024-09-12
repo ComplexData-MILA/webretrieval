@@ -1,16 +1,20 @@
 """
 Standalone script demonstrating the logic behind
-https://arxiv.org/abs/2409.00009
+https://arxiv.org/abs/2409.00009 with DuckDuckGo search.
 """
+from dotenv import load_dotenv
+load_dotenv()
 
 import re
 from typing import Any, Optional, NamedTuple
 
 import openai
+from duckduckgo_search import DDGS
+
 
 MAX_NUM_TURNS: int = 10
 MAIN_AGENT_MODEL_NAME: str = "gpt-4o-mini"
-
+MAX_SEARCH_RESULTS: int = 10
 statement = input("Enter statement to verify and press ENTER: ")
 
 initial_query = f"""\
@@ -36,12 +40,25 @@ def search(query: str) -> str:
 
     Params:
         query: str
-        (please feel free to add other parameters as needed.)
 
     Returns:
         Summarized response to search query.
     """
-    return "TODO: Search and Summarize"
+    print(query)
+    res = ""
+    results = DDGS().text("python programming", max_results=MAX_SEARCH_RESULTS * 2)
+    results = [r for r in results if "politifact.com" not in r.get("href")][:MAX_SEARCH_RESULTS]
+    for doc in results:
+        res += f"Title: {doc['title']} Content: {doc['body'][:1600]}\n"
+    response = openai.chat.completions.create(
+        messages={
+            "role": "user",
+            "content": f"Please summarize the searched information for the query. Summarize your findings, taking into account the diversity and accuracy of the search results. Ensure your analysis is thorough and well-organized.\nQuery: {query}\nSearch results: {res}",
+        }, 
+        model=MAIN_AGENT_MODEL_NAME
+    ).choices[0].message.content
+    
+    return response
 
 
 class _KeywordExtractionOutput(NamedTuple):
@@ -83,7 +100,7 @@ def _extract_prediction_or_none(assistant_response: str) -> Optional[str]:
         None otherwise.
     """
 
-    match = re.search(r"Factuality:\s(\d+\.?\d+)", assistant_response)
+    match = re.search(r"Factuality:\s(\d+\.?\d?)", assistant_response)
     if match is None:
         return None
 
