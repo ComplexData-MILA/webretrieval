@@ -2,9 +2,10 @@
 Standalone script demonstrating the logic behind
 https://arxiv.org/abs/2409.00009 with DuckDuckGo search.
 """
+import time
 from dotenv import load_dotenv
 load_dotenv()
-
+import search_engine
 import re
 from typing import Any, Optional, NamedTuple
 
@@ -18,8 +19,6 @@ MAX_NUM_TURNS: int = 10
 MAIN_AGENT_MODEL_NAME: str = "gpt-4o-mini"
 MAX_SEARCH_RESULTS: int = 10
 
-input_file_path = "fact.json"
-df = pd.read_json(input_file_path,lines =True)
 
 def _query_initial(statement):
 
@@ -41,8 +40,7 @@ def _query_initial(statement):
 
     return context
 
-
-def search(query: str) -> str:
+def search(query: str, engine) -> str:
     """
     Invoke web search.
 
@@ -52,20 +50,25 @@ def search(query: str) -> str:
     Returns:
         Summarized response to search query.
     """
-    print(query)
     res = ""
-    results = DDGS().text("python programming", max_results=MAX_SEARCH_RESULTS * 2)
-    results = [r for r in results if "politifact.com" not in r.get("href")][:MAX_SEARCH_RESULTS]
-    for doc in results:
-        res += f"Title: {doc['title']} Content: {doc['body'][:1600]}\n"
+    if engine == "DuckDuckGo":
+        results = DDGS().text(query, max_results=MAX_SEARCH_RESULTS * 2)
+        results = [r for r in results if "politifact.com" not in r.get("href")][:MAX_SEARCH_RESULTS]
+        for doc in results:
+            res += f"Title: {doc['title']} Content: {doc['body'][:1600]}\n"
+
+    elif engine == "Google":
+        results = search_engine.google_search(query, MAX_SEARCH_RESULTS * 2)
+        results = [r for r in results if "politifact.com" not in r.get("link")][:MAX_SEARCH_RESULTS]
+        for doc in results:
+            res += f"Title: {doc['title']} Content: {doc['snippet'][:1600]}\n"
     response = openai.chat.completions.create(
-        messages={
+        messages=[{
             "role": "user",
             "content": f"Please summarize the searched information for the query. Summarize your findings, taking into account the diversity and accuracy of the search results. Ensure your analysis is thorough and well-organized.\nQuery: {query}\nSearch results: {res}",
-        }, 
+        }], 
         model=MAIN_AGENT_MODEL_NAME
     ).choices[0].message.content
-    
     return response
 
 
@@ -88,11 +91,9 @@ def _extract_search_query_or_none(
         _KeywordExtractionOutput if matched.
         None otherwise.
     """
-
-    match = re.match(r"(.*SEARCH:\s+)(.+)([\n]+.+)", assistant_response)
+    match = re.search(r"(.*?SEARCH:\s+)(.+?)(\s*$)", assistant_response, re.DOTALL | re.MULTILINE)
     if match is None:
         return None
-
     return _KeywordExtractionOutput(
         content_up_to_match=match.group(1) + match.group(2),
         matched_content=match.group(2),
@@ -114,9 +115,9 @@ def _extract_prediction_or_none(assistant_response: str) -> Optional[str]:
 
     return match.group(1)
 
-def process_statement(statement):
+def process_statement(statement, engine):
+    context = _query_initial(statement)
     for _ in range(MAX_NUM_TURNS):
-        context = _query_initial(statement)
         response = openai.chat.completions.create(
             messages=context, model=MAIN_AGENT_MODEL_NAME
         )
@@ -130,7 +131,7 @@ def process_statement(statement):
         # up to the search request. (Discard anything after the query.)
         search_request_match = _extract_search_query_or_none(main_agent_message)
         if search_request_match is not None:
-            search_response = search(search_request_match.matched_content)
+            search_response = search(search_request_match.matched_content,engine)
             context += [
                 {"role": "assistant", "content": search_request_match.content_up_to_match},
                 {"role": "user", "content": f"Search result: {search_response}"},
@@ -146,8 +147,10 @@ def process_statement(statement):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        statement_arg = sys.argv[1]
-        process_statement(statement_arg)
+    if len(sys.argv) > 2:
+        statement_arg = sys.argv[1] #the statement
+        engine = sys.argv[2] #the engine
+        
+        process_statement(statement_arg, engine)
     else:
-        print("No statement provided to the subprocess.")
+        print("statement and engine type should be provided")

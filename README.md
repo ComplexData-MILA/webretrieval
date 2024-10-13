@@ -10,8 +10,27 @@ Before running the script, ensure that all necessary Python packages are install
 ```bash
 pip install -r requirements.txt
 ```
-Then, run the script using the following command:
+Ensure you have a valid OpenAI API key set as an environment variable:
+
 ```bash
-python subprocess_verify.py
+export OPENAI_API_KEY=your_api_key
 ```
 
+To use the Google search engine, set up a Google Custom Search JSON API by visiting [Google Developers](https://developers.google.com/custom-search/v1/overview). Set the API key as an environment variable:
+
+```bash
+export GOOGLE_CUSTOM_API_KEY=your_api_key
+```
+
+## Running the script
+Go to the verifact directory, then, run the script using the following command:
+```bash
+python subprocess_verify.py -i the_input_file_path -s the_search_engine
+```
+Valid search engines are "DuckDuckGo" and "Google". DuckDuckGo is used as the default search engine if -s the_search_engine is not specified.
+
+To see an example of the script in action, run:
+```bash
+python subprocess_verify.py -i fact.json
+```
+In the verifact directory.
