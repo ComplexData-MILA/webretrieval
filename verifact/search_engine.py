@@ -24,10 +24,11 @@ def google_search(query, result_total=10):
         :return: Dictionary containing the API request parameters.
         """
         api_key = os.getenv("GOOGLE_CUSTOM_API_KEY")
+        search_engine_ID = os.getenv("GOOGLE_CUSTOM_SEARCH_ENGINE_ID")
         payload = {
             'key':api_key,
             'q': query,
-            'cx': '43df6c4509ec4403a',
+            'cx': search_engine_ID,
             'start': start,
             'num': num,
         }
@@ -123,5 +124,5 @@ def bing_search(query,count):
 
 # Example usage:
 if __name__ == "__main__":
-    google_search("donald trump date of birth",10)
+    print(google_search("donald trump date of birth",10))
 

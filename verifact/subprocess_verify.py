@@ -5,6 +5,7 @@ import sys
 import pandas as pd
 import time
 import threading
+import os
 
 def handle_process(process):
     stdout, stderr = process.communicate()
@@ -19,9 +20,15 @@ def main():
     parser.add_argument("-s", "--search_engine", default="DuckDuckGo", help="The select search engine to use to collect information"
                         +"Can select between DuckDuckGo and Google, default set to DuckDuckGo if not provided")
     parser.add_argument("-i", "--input_file", required=True, help="Input JSON file with the desired search keyword")
-    parser.add_argument("-i", "--rpm", default=0.9 * 2_000, help="Requests per minute. Recommend setting this to slightly below your OpenAI limit.")
-    parser.add_argument("-i", "--tpm", default=0.9 * 10_000_000, help="Input JSON file with the desired search keyword")
+    parser.add_argument("-r", "--rpm", default=0.9 * 2_000, help="Requests per minute. Recommend setting this to slightly below your OpenAI limit.")
+    parser.add_argument("-t", "--tpm", default=0.9 * 10_000_000, help="Maximum token limit per minute")
+    parser.add_argument("-m", "--model", default="gpt-4o-mini", help="The GPT model that will be used")
+    parser.add_argument("-o","--output_file", help="The file name of the output file, expect a JSON file. Input_file_name_output.json by default")
     args = parser.parse_args()
+
+    if not args.output_file:
+        base_name = os.path.splitext(args.input_file)[0]
+        args.output_file = f"{base_name}.output.json"
 
     current_rp_count = 0
     current_tpm_count = 0
@@ -43,7 +50,7 @@ def main():
         current_rp_count += 10  # this is max request count for 1 process
         current_tpm_count += 10000  # approximation for now, will change later in production environment
 
-        process = subprocess.Popen([sys.executable, 'parallel.py', statement, args.search_engine], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen([sys.executable, 'parallel.py', statement, args.search_engine, args.model, args.output_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         process_thread = threading.Thread(target=handle_process, args=(process,))
         process_thread.start()
         processes.append((process, process_thread))

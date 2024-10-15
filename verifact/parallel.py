@@ -8,7 +8,8 @@ load_dotenv()
 import search_engine
 import re
 from typing import Any, Optional, NamedTuple
-
+import os
+import json
 import openai
 import pandas as pd
 from duckduckgo_search import DDGS
@@ -16,7 +17,7 @@ import sys
 
 
 MAX_NUM_TURNS: int = 10
-MAIN_AGENT_MODEL_NAME: str = "gpt-4o-mini"
+MAIN_AGENT_MODEL_NAME: str = sys.argv[3] #this file should only be call from subprocess_verify, hence guarantee this argument exist.
 MAX_SEARCH_RESULTS: int = 10
 
 
@@ -115,9 +116,9 @@ def _extract_prediction_or_none(assistant_response: str) -> Optional[str]:
 
     return match.group(1)
 
-def process_statement(statement, engine):
+def process_statement(statement, engine, output):
     context = _query_initial(statement)
-    for _ in range(MAX_NUM_TURNS):
+    for turns in range(MAX_NUM_TURNS):
         response = openai.chat.completions.create(
             messages=context, model=MAIN_AGENT_MODEL_NAME
         )
@@ -142,15 +143,30 @@ def process_statement(statement, engine):
 
         prediction_match = _extract_prediction_or_none(main_agent_message)
         if prediction_match is not None:
-            print(f"Statement: {statement}, Prediction: {prediction_match}")
+            output_data = {
+                "statement": statement,
+                "engine_used": engine,
+                "interaction": turns,
+                "prediction": prediction_match
+            }
+
+            if not os.path.isfile(output_file):
+                with open(output_file, 'w') as file:
+                    json.dump([output_data], file, indent=4)
+            else:
+                with open(output_file, 'r+') as file:
+                    data = json.load(file)
+                    data.append(output_data)
+                    file.seek(0)
+                    json.dump(data, file, indent=4)
             break
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 2:
+    if len(sys.argv) > 4:
         statement_arg = sys.argv[1] #the statement
         engine = sys.argv[2] #the engine
-        
-        process_statement(statement_arg, engine)
+        output_file = sys.argv[4] #the output file_path
+        process_statement(statement_arg, engine,output_file)
     else:
         print("statement and engine type should be provided")
