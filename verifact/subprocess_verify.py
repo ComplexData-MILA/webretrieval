@@ -19,9 +19,9 @@ def main():
     parser.add_argument("-s", "--search_engine", default="DuckDuckGo", help="The select search engine to use to collect information"
                         +"Can select between DuckDuckGo and Google, default set to DuckDuckGo if not provided")
     parser.add_argument("-i", "--input_file", required=True, help="Input JSON file with the desired search keyword")
+    parser.add_argument("-i", "--rpm", default=0.9 * 2_000, help="Requests per minute. Recommend setting this to slightly below your OpenAI limit.")
+    parser.add_argument("-i", "--tpm", default=0.9 * 10_000_000, help="Input JSON file with the desired search keyword")
     args = parser.parse_args()
-    rpm = int(0.9 * 30_000)  # requests per minute
-    tpm = int(0.9 * 150_000_000)  # tokens per minute, probably will never reach
 
     current_rp_count = 0
     current_tpm_count = 0
@@ -36,7 +36,7 @@ def main():
             current_rp_count = 0
             current_tpm_count = 0
 
-        if current_rp_count > rpm or current_tpm_count > tpm:
+        if current_rp_count > args.rpm or current_tpm_count > args.tpm:
             sleep_time = 60 - (time.time() - current_time)
             time.sleep(max(0, sleep_time))  # Ensures we don't sleep for a negative amount of time
 
