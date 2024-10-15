@@ -17,7 +17,7 @@ def handle_process(process):
 def main():
     parser = argparse.ArgumentParser(description="Collect news based on keywords.")
     parser.add_argument("-s", "--search_engine", default="DuckDuckGo", help="The select search engine to use to collect information"
-                        +"Can select between DuckDuckGo and Google, default set to google if not provided")
+                        +"Can select between DuckDuckGo and Google, default set to DuckDuckGo if not provided")
     parser.add_argument("-i", "--input_file", required=True, help="Input JSON file with the desired search keyword")
     args = parser.parse_args()
     rpm = int(0.9 * 30_000)  # requests per minute
