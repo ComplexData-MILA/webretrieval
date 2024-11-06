@@ -32,9 +32,9 @@ def _query_initial(statement):
 
     Statement: {statement}
 
-    After providing all your analysis steps, summarize your analysis \
     and state "True statement; Factuality: 1" if you think the statement \
-    is factual, or "False statement; Factuality: 0" otherwise.
+    is factual, or "False statement; Factuality: 0" otherwise. \
+    
     """
 
     context: Any = [{"role": "user", "content": initial_query}]
@@ -53,16 +53,36 @@ def search(query: str, engine) -> str:
     """
     res = ""
     if engine == "DuckDuckGo":
-        results = DDGS().text(query, max_results=MAX_SEARCH_RESULTS * 2)
+        results = DDGS().text(query, max_results=MAX_SEARCH_RESULTS + 2)
+        
         results = [r for r in results if "politifact.com" not in r.get("href")][:MAX_SEARCH_RESULTS]
         for doc in results:
             res += f"Title: {doc['title']} Content: {doc['body'][:1600]}\n"
 
     elif engine == "Google":
-        results = search_engine.google_search(query, MAX_SEARCH_RESULTS * 2)
+        results = search_engine.google_search(query, MAX_SEARCH_RESULTS + 2)
         results = [r for r in results if "politifact.com" not in r.get("link")][:MAX_SEARCH_RESULTS]
         for doc in results:
             res += f"Title: {doc['title']} Content: {doc['snippet'][:1600]}\n"
+
+    elif engine == "Brave":
+        results = search_engine.brave_search(query, MAX_SEARCH_RESULTS * 2)
+        results = [r for r in results if "politifact.com" not in r["url"]][:MAX_SEARCH_RESULTS]
+        for doc in results:
+            res += f"Title: {doc["title"]} Content: {doc["snippet"][:1600]}\n"
+    elif engine == "Bing":
+
+        results = search_engine.bing_search(query, MAX_SEARCH_RESULTS+2)
+        if "webPages" in results:
+            results = results['webPages']['value']
+            results = [r for r in results if "politifact.com" not in r["url"]][:MAX_SEARCH_RESULTS]
+            for doc in results:
+                res += f"Title: {doc["name"]} Content: {doc["snippet"][:1600]}\n"  
+
+        else:
+            res = "error occur, retry"
+       
+    #print(res)
     response = openai.chat.completions.create(
         messages=[{
             "role": "user",
@@ -116,7 +136,7 @@ def _extract_prediction_or_none(assistant_response: str) -> Optional[str]:
 
     return match.group(1)
 
-def process_statement(statement, engine, output):
+def process_statement(statement, engine, output, actual):
     context = _query_initial(statement)
     for turns in range(MAX_NUM_TURNS):
         response = openai.chat.completions.create(
@@ -127,7 +147,7 @@ def process_statement(statement, engine, output):
             "Invalid Main Agent API response:",
             response,
         )
-
+       # print(main_agent_message,"\n___________________________________________________________________________________________\n\n")
         # If search is requested in a message, truncate that message
         # up to the search request. (Discard anything after the query.)
         search_request_match = _extract_search_query_or_none(main_agent_message)
@@ -147,7 +167,8 @@ def process_statement(statement, engine, output):
                 "statement": statement,
                 "engine_used": engine,
                 "interaction": turns,
-                "prediction": prediction_match
+                "prediction": prediction_match,
+                "actual_prediction": actual
             }
 
             if not os.path.isfile(output_file):
@@ -167,6 +188,7 @@ if __name__ == "__main__":
         statement_arg = sys.argv[1] #the statement
         engine = sys.argv[2] #the engine
         output_file = sys.argv[4] #the output file_path
-        process_statement(statement_arg, engine,output_file)
+        actual_prediction = sys.argv[5] # the actual prediction
+        process_statement(statement_arg, engine,output_file, actual_prediction)
     else:
         print("statement and engine type should be provided")

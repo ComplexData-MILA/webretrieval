@@ -6,13 +6,13 @@ import pandas as pd
 import time
 import threading
 import os
+import random
 
 def handle_process(process):
     stdout, stderr = process.communicate()
     if process.returncode != 0:
         print("Error:", stderr.decode())
-    else:
-        print(stdout.decode())
+    
 
 
 def main():
@@ -35,8 +35,15 @@ def main():
     df = pd.read_json(args.input_file, lines=True)
     last_reset_time = time.time()
     processes = []
+    count = 0 
+    df = df.sample(frac=1).reset_index(drop=True)
 
-    for statement in df["statement"]:
+
+    
+    for data in df.iterrows():
+        actual = data[1]['verdict']
+        statement = data[1]['text']
+        if count >= 500: break
         current_time = time.time()
         if current_time - last_reset_time >= 60:
             last_reset_time = current_time
@@ -50,11 +57,13 @@ def main():
         current_rp_count += 10  # this is max request count for 1 process
         current_tpm_count += 10000  # approximation for now, will change later in production environment
 
-        process = subprocess.Popen([sys.executable, 'parallel.py', statement, args.search_engine, args.model, args.output_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(10)
+        process = subprocess.Popen([sys.executable, 'parallel.py', statement, args.search_engine, args.model, args.output_file, str(actual)], stdout=sys.stdout, stderr=subprocess.PIPE)
         process_thread = threading.Thread(target=handle_process, args=(process,))
         process_thread.start()
         processes.append((process, process_thread))
 
+        count+=1
     for process, process_thread in processes:
         process_thread.join()  # Wait for all threads to complete
 

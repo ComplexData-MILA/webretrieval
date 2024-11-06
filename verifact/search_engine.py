@@ -64,20 +64,19 @@ def brave_search(query, result_total = 10):
     def extract_web_search_data(response):
         response_data = json.loads(response.text)
         web_search_results = response_data['web'].get('results', [])
+        results = []
         for result in web_search_results:
             title = result.get('title', 'no title')  
             snippet = result.get('description', 'no description')  
             url = result.get('url', 'no link') 
-            print(f"title: {title}")
-            print(f"snippet: {snippet}")
-            print(f"link: {url}")
-            print("-" * 30)  
+            results.append({"title": title, "snippet": snippet, "url": url})
+        return results
             
     response = requests.get(
         url="https://api.search.brave.com/res/v1/web/search",
         headers={
             'Accept': 'application/json',
-            'X-Subscription-Token': 'key here'
+            'X-Subscription-Token': os.getenv("Brave_Search_API")
         },
         params={
             'q': query,
@@ -85,11 +84,10 @@ def brave_search(query, result_total = 10):
         }
     )
     if response.status_code == 200:
-        extract_web_search_data(response)
+        return extract_web_search_data(response)
     else:
         print(f"wrong response: code {response.status_code}")
-        print(response.text) 
-    
+        return [{"title": "request fail", "snippet": "", "url": ""}]
 
 def bing_search(query,count):
     '''
@@ -106,23 +104,19 @@ def bing_search(query,count):
     # Construct a request
     mkt = 'en-US'
     params = { 'q': query, 'mkt': mkt, "count":count }
-    headers = { 'Ocp-Apim-Subscription-Key': "key here" }
+    headers = { 'Ocp-Apim-Subscription-Key': os.getenv("Bing_Search_API") }
 
-    try:
-        response = requests.get(endpoint, headers=headers, params=params)
-        response.raise_for_status()
 
-        print("Headers: ")
-        print(response.headers)
-
-        print("JSON Response:  ")
-        pprint(response.json())
-    
-    except Exception as ex:
-        raise ex
-        
+    response = requests.get(endpoint, headers=headers, params=params)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"wrong response: code {response.status_code}")
+        return {"webPages":{"value":[{"url":"" , "name" : "search_fail", "snippet": "search fail, please retry"}]}}
 
 # Example usage:
 if __name__ == "__main__":
-    print(google_search("donald trump date of birth",10))
+    result = bing_search("donald trump date of birth",1)
+    result2 = google_search("donald trump date of birth",1)
 
+    print(result, "\n\n", result2)
