@@ -14,29 +14,32 @@ import openai
 import pandas as pd
 from duckduckgo_search import DDGS
 import sys
+import requests
+from bs4 import BeautifulSoup
+import logging
 
 
 MAX_NUM_TURNS: int = 10
 MAIN_AGENT_MODEL_NAME: str = sys.argv[3] #this file should only be call from subprocess_verify, hence guarantee this argument exist.
 MAX_SEARCH_RESULTS: int = 10
+logging.basicConfig(filename='text.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+def clean_text(text):
+    cleaned_text = re.sub(r"[^a-zA-Z,.?!' ]", '', text)
+    return cleaned_text
 
 
 def _query_initial(statement):
 
     initial_query = f"""\
-    You have access to a search engine tool. To invoke search, \
-    begin your query with the phrase "SEARCH: ". You may invoke the search \
-    tool as many times as needed. 
+You have access to a search engine tool. To invoke search, begin your query with the phrase
+“SEARCH: ”. You may invoke the search tool as many times as needed.Your task is to analyze the
+factuality of the given statement.
+Statement: {statement}
+and state “True statement; Factuality: 1” if you think the statement is factual, or “False statement;
+Factuality: 0” otherwise.
 
-    Your task is to analyze the factuality of the given statement.
-
-    Statement: {statement}
-
-    and state "True statement; Factuality: 1" if you think the statement \
-    is factual, or "False statement; Factuality: 0" otherwise. \
+    """ 
     
-    """
-
     context: Any = [{"role": "user", "content": initial_query}]
 
     return context
@@ -59,30 +62,65 @@ def search(query: str, engine) -> str:
         for doc in results:
             res += f"Title: {doc['title']} Content: {doc['body'][:1600]}\n"
 
+    elif engine == "DuckDuckGo_link":
+        results = DDGS().text(query, max_results=MAX_SEARCH_RESULTS + 5)
+        results = [r for r in results if "politifact.com" not in r.get("href")][:MAX_SEARCH_RESULTS]
+        for doc in results:
+            response = requests.get(doc['href'])
+            if response.status_code == 200:
+                response.encoding = response.apparent_encoding  # Sets encoding to match what the response header claims
+                soup = BeautifulSoup(response.text, 'html.parser')
+                paragraphs = soup.find_all('p')
+                text = '\n'.join([p.get_text() for p in paragraphs])
+                text = clean_text(text)
+                text = text[:2000]
+                if len(text) < 10:
+                    text = doc['body']
+            else:
+                text = doc['body']
+            res += f"Title: {doc['title']} Content: {text}\n"
+
     elif engine == "Google":
         results = search_engine.google_search(query, MAX_SEARCH_RESULTS + 2)
         results = [r for r in results if "politifact.com" not in r.get("link")][:MAX_SEARCH_RESULTS]
         for doc in results:
             res += f"Title: {doc['title']} Content: {doc['snippet'][:1600]}\n"
 
+    elif engine == "Google_link":
+        results = search_engine.google_search(query, MAX_SEARCH_RESULTS + 2)
+        results = [r for r in results if "politifact.com" not in r.get("link")][:MAX_SEARCH_RESULTS]
+        for doc in results:
+            response = requests.get(doc['link'])
+            if response.status_code == 200:
+                response.encoding = response.apparent_encoding  # Sets encoding to match what the response header claims
+                soup = BeautifulSoup(response.text, 'html.parser')
+                paragraphs = soup.find_all('p')
+                text = '\n'.join([p.get_text() for p in paragraphs])
+                text = clean_text(text)
+                text = text[:1000]
+                if len(text) < 10:
+                    text = doc['snippet']
+            else:
+                text = doc['snippet']
+            res += f"Title: {doc['title']} Content: {text}\n"
+        
     elif engine == "Brave":
         results = search_engine.brave_search(query, MAX_SEARCH_RESULTS * 2)
         results = [r for r in results if "politifact.com" not in r["url"]][:MAX_SEARCH_RESULTS]
         for doc in results:
             res += f"Title: {doc["title"]} Content: {doc["snippet"][:1600]}\n"
+   
     elif engine == "Bing":
-
         results = search_engine.bing_search(query, MAX_SEARCH_RESULTS+2)
         if "webPages" in results:
             results = results['webPages']['value']
             results = [r for r in results if "politifact.com" not in r["url"]][:MAX_SEARCH_RESULTS]
             for doc in results:
-                res += f"Title: {doc["name"]} Content: {doc["snippet"][:1600]}\n"  
-
+                res += f"Title: {doc["name"]} Content: {doc["snippet"][:1600]}\n\n"  
         else:
             res = "error occur, retry"
        
-    #print(res)
+    logging.info(res)
     response = openai.chat.completions.create(
         messages=[{
             "role": "user",
@@ -137,17 +175,18 @@ def _extract_prediction_or_none(assistant_response: str) -> Optional[str]:
     return match.group(1)
 
 def process_statement(statement, engine, output, actual):
+    logging.info(statement)
     context = _query_initial(statement)
     for turns in range(MAX_NUM_TURNS):
         response = openai.chat.completions.create(
-            messages=context, model=MAIN_AGENT_MODEL_NAME
+            messages=context, model=MAIN_AGENT_MODEL_NAME, temperature = 0.7
         )
         main_agent_message = response.choices[0].message.content
         assert main_agent_message is not None, (
             "Invalid Main Agent API response:",
             response,
         )
-       # print(main_agent_message,"\n___________________________________________________________________________________________\n\n")
+        logging.info(main_agent_message)
         # If search is requested in a message, truncate that message
         # up to the search request. (Discard anything after the query.)
         search_request_match = _extract_search_query_or_none(main_agent_message)
